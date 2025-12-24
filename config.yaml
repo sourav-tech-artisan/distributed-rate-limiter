@@ -1,0 +1,29 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+redis:
+  addr: "localhost:6379"
+  pool_size: 10
+  timeout: "1s"
+
+rate_limiter:
+  default_algorithm: "token_bucket"
+  default_limit: 100
+  default_window: "1m"
+  
+  token_bucket:
+    default_capacity: 100
+    refill_check_interval: "1s"
+
+circuit_breaker:
+  enabled: true
+  failure_threshold: 5
+  timeout: "10s"
+  half_open_max_requests: 3
+  fail_mode: "closed"
+
+logging:
+  level: "info"
+  format: "json"
+
