@@ -1,43 +1,42 @@
 # Rate Limiter Service
 
-A distributed rate limiter built with Go and Redis. Uses Token Bucket algorithm.
+Multi-tenant rate limiter as a service. Built with Go, PostgreSQL, and Redis.
 
 ## Quick Start
 
 ```bash
-# Make sure Redis is running
-redis-server
+# Start dependencies
+docker-compose up -d
 
-# Run the service
+
+# Start server
 go run ./cmd/server
 ```
 
-Service starts at `http://localhost:8080`
+## Usage
 
-## API
+### 1. Create an account
 
-### Check rate limit
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com", "password": "secret123"}'
+```
+
+### 2. Create a rate limiting profile
+
+```bash
+curl -X POST http://localhost:8080/api/v1/profiles \
+  -H "X-API-Key: rl_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "api", "algorithm": "token_bucket", "limit": 100, "window": "1m"}'
+```
+
+### 3. Check rate limit
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/rate-limit/check \
+  -H "X-API-Key: rl_your_api_key" \
   -H "Content-Type: application/json" \
-  -d '{"key": "user:123", "profile": "default"}'
+  -d '{"key": "user:123", "profile": "api"}'
 ```
-
-### List profiles
-
-```bash
-curl http://localhost:8080/api/v1/profiles
-```
-
-### Health check
-
-```bash
-curl http://localhost:8080/health
-```
-
-## Configuration
-
-Edit `config.yaml` to add/modify rate limiting profiles. Each profile can have different limits.
-
-See [DESIGN.md](./DESIGN.md) for details.

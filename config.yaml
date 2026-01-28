@@ -2,53 +2,32 @@ server:
   host: "0.0.0.0"
   port: 8080
 
+postgres:
+  host: "localhost"
+  port: 5432
+  user: "ratelimiter"
+  password: "secret"
+  database: "ratelimiter"
+  max_connections: 20
+
 redis:
   addr: "localhost:6379"
   pool_size: 10
   timeout: "1s"
 
-rate_limiter:
-  default_profile: "default"  # Profile to use when not specified in request
-  
-  profiles:
-    # Default profile - general API rate limiting
-    default:
-      algorithm: "token_bucket"
-      limit: 100
-      window: "1m"
-      token_bucket:
-        capacity: 100
-    
-    # Upload endpoint - stricter limits
-    upload:
-      algorithm: "token_bucket"
-      limit: 10
-      window: "1h"
-      token_bucket:
-        capacity: 10
-    
-    # Login attempts - security focused
-    login:
-      algorithm: "token_bucket"
-      limit: 5
-      window: "15m"
-      token_bucket:
-        capacity: 5
-    
-    # Search API - higher throughput
-    search:
-      algorithm: "token_bucket"
-      limit: 500
-      window: "1m"
-      token_bucket:
-        capacity: 500
+cache:
+  tenant_ttl: "5m"
+  profile_ttl: "5m"
+
+quotas:
+  default_max_profiles: 10
+  default_max_requests_per_day: 10000
 
 circuit_breaker:
   enabled: true
-  failure_threshold: 5           # Number of failures before opening
-  timeout: "10s"                 # Time before attempting half-open
-  half_open_max_requests: 3      # Test requests in half-open state
-  fail_mode: "closed"            # Deny requests when circuit is open
+  failure_threshold: 5
+  timeout: "10s"
+  half_open_max_requests: 3
 
 logging:
   level: "info"

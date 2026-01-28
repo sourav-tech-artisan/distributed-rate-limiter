@@ -2,26 +2,19 @@ package config
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
 )
 
-// Profile naming rules
-const (
-	MaxProfileNameLength = 64
-	MaxKeyLength         = 256
-)
-
-var profileNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
-
 // Config holds all configuration for the application
 type Config struct {
 	Server         ServerConfig         `mapstructure:"server"`
+	Postgres       PostgresConfig       `mapstructure:"postgres"`
 	Redis          RedisConfig          `mapstructure:"redis"`
-	RateLimiter    RateLimiterConfig    `mapstructure:"rate_limiter"`
+	Cache          CacheConfig          `mapstructure:"cache"`
+	Quotas         QuotasConfig         `mapstructure:"quotas"`
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
 	Logging        LoggingConfig        `mapstructure:"logging"`
 }
@@ -30,6 +23,22 @@ type Config struct {
 type ServerConfig struct {
 	Host string `mapstructure:"host"`
 	Port int    `mapstructure:"port"`
+}
+
+// PostgresConfig holds PostgreSQL configuration
+type PostgresConfig struct {
+	Host           string `mapstructure:"host"`
+	Port           int    `mapstructure:"port"`
+	User           string `mapstructure:"user"`
+	Password       string `mapstructure:"password"`
+	Database       string `mapstructure:"database"`
+	MaxConnections int    `mapstructure:"max_connections"`
+}
+
+// GetDSN returns the PostgreSQL connection string
+func (p *PostgresConfig) GetDSN() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		p.User, p.Password, p.Host, p.Port, p.Database)
 }
 
 // RedisConfig holds Redis configuration
@@ -48,54 +57,34 @@ func (r *RedisConfig) GetTimeout() time.Duration {
 	return duration
 }
 
-// RateLimiterConfig holds rate limiter configuration with profiles
-type RateLimiterConfig struct {
-	DefaultProfile string             `mapstructure:"default_profile"`
-	Profiles       map[string]Profile `mapstructure:"profiles"`
+// CacheConfig holds caching configuration
+type CacheConfig struct {
+	TenantTTL  string `mapstructure:"tenant_ttl"`
+	ProfileTTL string `mapstructure:"profile_ttl"`
 }
 
-// Profile represents a rate limiting configuration for a specific use case
-type Profile struct {
-	Algorithm   string                   `mapstructure:"algorithm"`
-	Limit       int                      `mapstructure:"limit"`
-	Window      string                   `mapstructure:"window"`
-	TokenBucket *TokenBucketProfileConfig `mapstructure:"token_bucket"`
-}
-
-// GetWindow returns the window as time.Duration
-func (p *Profile) GetWindow() time.Duration {
-	duration, err := time.ParseDuration(p.Window)
+// GetTenantTTL returns tenant cache TTL as time.Duration
+func (c *CacheConfig) GetTenantTTL() time.Duration {
+	duration, err := time.ParseDuration(c.TenantTTL)
 	if err != nil {
-		return time.Minute
+		return 5 * time.Minute
 	}
 	return duration
 }
 
-// GetCapacity returns the token bucket capacity, defaulting to limit if not set
-func (p *Profile) GetCapacity() int {
-	if p.TokenBucket != nil && p.TokenBucket.Capacity > 0 {
-		return p.TokenBucket.Capacity
+// GetProfileTTL returns profile cache TTL as time.Duration
+func (c *CacheConfig) GetProfileTTL() time.Duration {
+	duration, err := time.ParseDuration(c.ProfileTTL)
+	if err != nil {
+		return 5 * time.Minute
 	}
-	return p.Limit
+	return duration
 }
 
-// GetRefillRate returns tokens per second based on limit and window
-func (p *Profile) GetRefillRate() float64 {
-	window := p.GetWindow()
-	if window == 0 {
-		return 0
-	}
-	return float64(p.Limit) / window.Seconds()
-}
-
-// GetKeyTTL returns the TTL for Redis keys (3x window duration)
-func (p *Profile) GetKeyTTL() time.Duration {
-	return p.GetWindow() * 3
-}
-
-// TokenBucketProfileConfig holds token bucket specific configuration within a profile
-type TokenBucketProfileConfig struct {
-	Capacity int `mapstructure:"capacity"`
+// QuotasConfig holds default quota settings for new tenants
+type QuotasConfig struct {
+	DefaultMaxProfiles       int `mapstructure:"default_max_profiles"`
+	DefaultMaxRequestsPerDay int `mapstructure:"default_max_requests_per_day"`
 }
 
 // CircuitBreakerConfig holds circuit breaker configuration
@@ -104,7 +93,6 @@ type CircuitBreakerConfig struct {
 	FailureThreshold    uint32 `mapstructure:"failure_threshold"`
 	Timeout             string `mapstructure:"timeout"`
 	HalfOpenMaxRequests uint32 `mapstructure:"half_open_max_requests"`
-	FailMode            string `mapstructure:"fail_mode"`
 }
 
 // GetTimeout returns the timeout as time.Duration
@@ -168,20 +156,32 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.host", "0.0.0.0")
 	v.SetDefault("server.port", 8080)
 
+	// PostgreSQL defaults
+	v.SetDefault("postgres.host", "localhost")
+	v.SetDefault("postgres.port", 5432)
+	v.SetDefault("postgres.user", "ratelimiter")
+	v.SetDefault("postgres.password", "secret")
+	v.SetDefault("postgres.database", "ratelimiter")
+	v.SetDefault("postgres.max_connections", 20)
+
 	// Redis defaults
 	v.SetDefault("redis.addr", "localhost:6379")
 	v.SetDefault("redis.pool_size", 10)
 	v.SetDefault("redis.timeout", "1s")
 
-	// Rate limiter defaults
-	v.SetDefault("rate_limiter.default_profile", "default")
+	// Cache defaults
+	v.SetDefault("cache.tenant_ttl", "5m")
+	v.SetDefault("cache.profile_ttl", "5m")
+
+	// Quotas defaults
+	v.SetDefault("quotas.default_max_profiles", 10)
+	v.SetDefault("quotas.default_max_requests_per_day", 10000)
 
 	// Circuit breaker defaults
 	v.SetDefault("circuit_breaker.enabled", true)
 	v.SetDefault("circuit_breaker.failure_threshold", 5)
 	v.SetDefault("circuit_breaker.timeout", "10s")
 	v.SetDefault("circuit_breaker.half_open_max_requests", 3)
-	v.SetDefault("circuit_breaker.fail_mode", "closed")
 
 	// Logging defaults
 	v.SetDefault("logging.level", "info")
@@ -190,90 +190,30 @@ func setDefaults(v *viper.Viper) {
 
 // Validate checks the configuration for errors
 func (c *Config) Validate() error {
-	// Check that at least one profile exists
-	if len(c.RateLimiter.Profiles) == 0 {
-		return fmt.Errorf("at least one rate limiter profile must be defined")
+	if c.Server.Port <= 0 || c.Server.Port > 65535 {
+		return fmt.Errorf("invalid server port: %d", c.Server.Port)
 	}
 
-	// Validate default profile exists
-	if _, exists := c.RateLimiter.Profiles[c.RateLimiter.DefaultProfile]; !exists {
-		return fmt.Errorf("default profile '%s' not found in profiles", c.RateLimiter.DefaultProfile)
+	if c.Postgres.Host == "" {
+		return fmt.Errorf("postgres host is required")
 	}
 
-	// Validate each profile
-	for name, profile := range c.RateLimiter.Profiles {
-		if err := validateProfileName(name); err != nil {
-			return fmt.Errorf("invalid profile name '%s': %w", name, err)
-		}
-		if err := validateProfile(name, &profile); err != nil {
-			return err
-		}
+	if c.Redis.Addr == "" {
+		return fmt.Errorf("redis address is required")
 	}
 
-	return nil
-}
+	if c.Quotas.DefaultMaxProfiles <= 0 {
+		return fmt.Errorf("default_max_profiles must be positive")
+	}
 
-func validateProfileName(name string) error {
-	if len(name) == 0 {
-		return fmt.Errorf("profile name cannot be empty")
+	if c.Quotas.DefaultMaxRequestsPerDay <= 0 {
+		return fmt.Errorf("default_max_requests_per_day must be positive")
 	}
-	if len(name) > MaxProfileNameLength {
-		return fmt.Errorf("profile name exceeds %d characters", MaxProfileNameLength)
-	}
-	if !profileNameRegex.MatchString(name) {
-		return fmt.Errorf("profile name must contain only alphanumeric characters and underscores")
-	}
-	return nil
-}
 
-func validateProfile(name string, p *Profile) error {
-	if p.Algorithm == "" {
-		return fmt.Errorf("profile '%s': algorithm is required", name)
-	}
-	if p.Algorithm != "token_bucket" {
-		return fmt.Errorf("profile '%s': unsupported algorithm '%s' (only 'token_bucket' is supported)", name, p.Algorithm)
-	}
-	if p.Limit <= 0 {
-		return fmt.Errorf("profile '%s': limit must be positive", name)
-	}
-	if p.Window == "" {
-		return fmt.Errorf("profile '%s': window is required", name)
-	}
-	if _, err := time.ParseDuration(p.Window); err != nil {
-		return fmt.Errorf("profile '%s': invalid window duration '%s'", name, p.Window)
-	}
 	return nil
 }
 
 // GetAddress returns the server address in host:port format
 func (c *Config) GetAddress() string {
 	return fmt.Sprintf("%s:%d", c.Server.Host, c.Server.Port)
-}
-
-// GetProfile returns a profile by name, or nil if not found
-func (c *Config) GetProfile(name string) *Profile {
-	if profile, exists := c.RateLimiter.Profiles[name]; exists {
-		return &profile
-	}
-	return nil
-}
-
-// GetDefaultProfile returns the default profile
-func (c *Config) GetDefaultProfile() *Profile {
-	return c.GetProfile(c.RateLimiter.DefaultProfile)
-}
-
-// ProfileExists checks if a profile exists
-func (c *Config) ProfileExists(name string) bool {
-	_, exists := c.RateLimiter.Profiles[name]
-	return exists
-}
-
-// GetProfileNames returns all profile names
-func (c *Config) GetProfileNames() []string {
-	names := make([]string, 0, len(c.RateLimiter.Profiles))
-	for name := range c.RateLimiter.Profiles {
-		names = append(names, name)
-	}
-	return names
 }
