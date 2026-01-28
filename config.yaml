@@ -8,22 +8,48 @@ redis:
   timeout: "1s"
 
 rate_limiter:
-  default_algorithm: "token_bucket"
-  default_limit: 100
-  default_window: "1m"
+  default_profile: "default"  # Profile to use when not specified in request
   
-  token_bucket:
-    default_capacity: 100
-    refill_check_interval: "1s"
+  profiles:
+    # Default profile - general API rate limiting
+    default:
+      algorithm: "token_bucket"
+      limit: 100
+      window: "1m"
+      token_bucket:
+        capacity: 100
+    
+    # Upload endpoint - stricter limits
+    upload:
+      algorithm: "token_bucket"
+      limit: 10
+      window: "1h"
+      token_bucket:
+        capacity: 10
+    
+    # Login attempts - security focused
+    login:
+      algorithm: "token_bucket"
+      limit: 5
+      window: "15m"
+      token_bucket:
+        capacity: 5
+    
+    # Search API - higher throughput
+    search:
+      algorithm: "token_bucket"
+      limit: 500
+      window: "1m"
+      token_bucket:
+        capacity: 500
 
 circuit_breaker:
   enabled: true
-  failure_threshold: 5
-  timeout: "10s"
-  half_open_max_requests: 3
-  fail_mode: "closed"
+  failure_threshold: 5           # Number of failures before opening
+  timeout: "10s"                 # Time before attempting half-open
+  half_open_max_requests: 3      # Test requests in half-open state
+  fail_mode: "closed"            # Deny requests when circuit is open
 
 logging:
   level: "info"
   format: "json"
-
