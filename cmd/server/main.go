@@ -9,8 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/souravkumar/distributed-rate-limiter/internal/api"
+	"github.com/souravkumar/distributed-rate-limiter/internal/cache"
 	"github.com/souravkumar/distributed-rate-limiter/internal/config"
+	"github.com/souravkumar/distributed-rate-limiter/internal/database"
 	"github.com/souravkumar/distributed-rate-limiter/internal/logger"
 
 	"github.com/gin-gonic/gin"
@@ -29,14 +30,35 @@ func main() {
 	logger.Init(cfg.Logging.Level, cfg.Logging.Format)
 	log.Info().Msg("starting rate limiter service")
 
+	// Initialize database
+	db, err := database.NewPostgres(cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to connect to database")
+	}
+	defer database.Close(db)
+
+	// Initialize Redis
+	redisClient, err := cache.NewRedis(cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to connect to redis")
+	}
+	defer cache.Close(redisClient)
+
 	// Set Gin mode
 	gin.SetMode(gin.ReleaseMode)
 
-	// Initialize handlers
-	handler := api.NewHandler()
+	// Setup minimal router
+	router := gin.New()
+	router.Use(gin.Recovery())
 
-	// Setup router
-	router := api.SetupRouter(handler)
+	// Health check endpoint
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":   "healthy",
+			"postgres": "connected",
+			"redis":    "connected",
+		})
+	})
 
 	// Create HTTP server
 	srv := &http.Server{
