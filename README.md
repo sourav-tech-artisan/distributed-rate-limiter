@@ -5,11 +5,10 @@ Multi-tenant rate limiter as a service. Built with Go, PostgreSQL, and Redis.
 ## Quick Start
 
 ```bash
-# Start dependencies
+# Start PostgreSQL and Redis
 docker-compose up -d
 
-
-# Start server
+# Run the service (auto-migrates database on startup)
 go run ./cmd/server
 ```
 
@@ -40,3 +39,4 @@ curl -X POST http://localhost:8080/api/v1/rate-limit/check \
   -H "Content-Type: application/json" \
   -d '{"key": "user:123", "profile": "api"}'
 ```
+
