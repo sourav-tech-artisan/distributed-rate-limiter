@@ -1,4 +1,4 @@
-package cache
+package redis
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
-	"github.com/souravkumar/distributed-rate-limiter/internal/config"
+	"github.com/souravkumar/distributed-rate-limiter/internal/platform/config"
 )
 
-// NewRedis creates a new Redis client
-func NewRedis(cfg *config.Config) (*redis.Client, error) {
+// New creates a new Redis client
+func New(cfg *config.Config) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     cfg.Redis.Addr,
 		PoolSize: cfg.Redis.PoolSize,
