@@ -1,4 +1,4 @@
-package database
+package postgres
 
 import (
 	"database/sql"
@@ -10,14 +10,14 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
 	"github.com/rs/zerolog/log"
-	"github.com/souravkumar/distributed-rate-limiter/internal/config"
+	"github.com/souravkumar/distributed-rate-limiter/internal/platform/config"
 	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
-// NewPostgres creates a new GORM database connection and runs migrations
-func NewPostgres(cfg *config.Config) (*gorm.DB, error) {
+// New creates a new GORM database connection and runs migrations
+func New(cfg *config.Config) (*gorm.DB, error) {
 	dsn := cfg.Postgres.GetDSN()
 
 	// First, run migrations using database/sql

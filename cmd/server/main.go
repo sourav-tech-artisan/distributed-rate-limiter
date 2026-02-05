@@ -9,10 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/souravkumar/distributed-rate-limiter/internal/cache"
-	"github.com/souravkumar/distributed-rate-limiter/internal/config"
-	"github.com/souravkumar/distributed-rate-limiter/internal/database"
-	"github.com/souravkumar/distributed-rate-limiter/internal/logger"
+	"github.com/souravkumar/distributed-rate-limiter/internal/platform/config"
+	"github.com/souravkumar/distributed-rate-limiter/internal/platform/logger"
+	"github.com/souravkumar/distributed-rate-limiter/internal/platform/postgres"
+	"github.com/souravkumar/distributed-rate-limiter/internal/platform/redis"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
@@ -31,18 +31,18 @@ func main() {
 	log.Info().Msg("starting rate limiter service")
 
 	// Initialize database
-	db, err := database.NewPostgres(cfg)
+	db, err := postgres.New(cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to connect to database")
 	}
-	defer database.Close(db)
+	defer postgres.Close(db)
 
 	// Initialize Redis
-	redisClient, err := cache.NewRedis(cfg)
+	redisClient, err := redis.New(cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to connect to redis")
 	}
-	defer cache.Close(redisClient)
+	defer redis.Close(redisClient)
 
 	// Set Gin mode
 	gin.SetMode(gin.ReleaseMode)
