@@ -1,21 +1,16 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
+	"github.com/rs/zerolog/log"
+	"github.com/souravkumar/distributed-rate-limiter/internal/auth"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/config"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/logger"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/postgres"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/redis"
-
-	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog/log"
+	"github.com/souravkumar/distributed-rate-limiter/internal/platform/server"
 )
 
 func main() {
@@ -44,50 +39,20 @@ func main() {
 	}
 	defer redis.Close(redisClient)
 
-	// Set Gin mode
-	gin.SetMode(gin.ReleaseMode)
+	// Initialize auth feature
+	authRepo := auth.NewRepository(db)
+	authService := auth.NewService(authRepo, cfg, log.Logger)
+	authHandler := auth.NewHandler(authService, log.Logger)
 
-	// Setup minimal router
-	router := gin.New()
-	router.Use(gin.Recovery())
-
-	// Health check endpoint
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":   "healthy",
-			"postgres": "connected",
-			"redis":    "connected",
-		})
+	// Setup router
+	router := server.NewRouter(&server.RouterConfig{
+		AuthHandler: authHandler,
+		AuthRepo:    authRepo,
 	})
 
-	// Create HTTP server
-	srv := &http.Server{
-		Addr:    cfg.GetAddress(),
-		Handler: router,
-	}
-
-	// Start server in goroutine
-	go func() {
-		log.Info().Str("address", cfg.GetAddress()).Msg("server starting")
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal().Err(err).Msg("failed to start server")
-		}
-	}()
-
-	// Wait for interrupt signal to gracefully shutdown the server
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	log.Info().Msg("shutting down server...")
-
-	// Graceful shutdown with 5 second timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Error().Err(err).Msg("server forced to shutdown")
-	} else {
-		log.Info().Msg("server exited gracefully")
+	// Create and start server
+	srv := server.New(cfg, router)
+	if err := srv.Start(); err != nil {
+		log.Fatal().Err(err).Msg("server failed")
 	}
 }
