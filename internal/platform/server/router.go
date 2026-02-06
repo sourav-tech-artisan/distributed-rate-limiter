@@ -5,17 +5,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/souravkumar/distributed-rate-limiter/internal/auth"
+	"github.com/souravkumar/distributed-rate-limiter/internal/profile"
 )
 
-// RouterConfig holds all the handlers needed for routing
+// RouterConfig holds all the handlers and middleware needed for routing
 type RouterConfig struct {
-	AuthHandler *auth.Handler
-	AuthRepo    *auth.Repository
+	AuthHandler    *auth.Handler
+	AuthMiddleware gin.HandlerFunc
+	ProfileHandler *profile.Handler
 }
 
 // NewRouter creates and configures the Gin router
 func NewRouter(cfg *RouterConfig) *gin.Engine {
-	// Set Gin to release mode
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
@@ -24,7 +25,7 @@ func NewRouter(cfg *RouterConfig) *gin.Engine {
 	router.Use(gin.Recovery())
 	router.Use(requestLogger())
 
-	// Health check endpoint (no auth required)
+	// Health check (no auth required)
 	router.GET("/health", healthCheck)
 
 	// API v1 routes
@@ -39,17 +40,17 @@ func NewRouter(cfg *RouterConfig) *gin.Engine {
 
 		// Protected routes (API key required)
 		protected := v1.Group("")
-		protected.Use(AuthMiddleware(cfg.AuthRepo))
+		protected.Use(cfg.AuthMiddleware)
 		{
-			// Profile routes will be added here
-			// profiles := protected.Group("/profiles")
-			// {
-			// 	profiles.POST("", cfg.ProfileHandler.Create)
-			// 	profiles.GET("", cfg.ProfileHandler.List)
-			// 	profiles.GET("/:name", cfg.ProfileHandler.Get)
-			// 	profiles.PUT("/:name", cfg.ProfileHandler.Update)
-			// 	profiles.DELETE("/:name", cfg.ProfileHandler.Delete)
-			// }
+			// Profile routes
+			profiles := protected.Group("/profiles")
+			{
+				profiles.POST("", cfg.ProfileHandler.Create)
+				profiles.GET("", cfg.ProfileHandler.List)
+				profiles.GET("/:name", cfg.ProfileHandler.Get)
+				profiles.PUT("/:name", cfg.ProfileHandler.Update)
+				profiles.DELETE("/:name", cfg.ProfileHandler.Delete)
+			}
 
 			// Rate limit routes will be added here
 			// ratelimit := protected.Group("/rate-limit")
@@ -72,9 +73,6 @@ func healthCheck(c *gin.Context) {
 // requestLogger is a middleware that logs all requests
 func requestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Process request
 		c.Next()
-
-		// Log after request is processed
 	}
 }

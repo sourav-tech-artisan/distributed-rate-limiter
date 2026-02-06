@@ -11,6 +11,7 @@ import (
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/postgres"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/redis"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/server"
+	"github.com/souravkumar/distributed-rate-limiter/internal/profile"
 )
 
 func main() {
@@ -44,10 +45,16 @@ func main() {
 	authService := auth.NewService(authRepo, cfg, log.Logger)
 	authHandler := auth.NewHandler(authService, log.Logger)
 
+	// Initialize profile feature
+	profileRepo := profile.NewRepository(db)
+	profileService := profile.NewService(profileRepo, log.Logger)
+	profileHandler := profile.NewHandler(profileService, log.Logger)
+
 	// Setup router
 	router := server.NewRouter(&server.RouterConfig{
-		AuthHandler: authHandler,
-		AuthRepo:    authRepo,
+		AuthHandler:    authHandler,
+		AuthMiddleware: server.AuthMiddleware(authRepo),
+		ProfileHandler: profileHandler,
 	})
 
 	// Create and start server
