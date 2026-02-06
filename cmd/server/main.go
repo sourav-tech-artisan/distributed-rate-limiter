@@ -12,6 +12,7 @@ import (
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/redis"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/server"
 	"github.com/souravkumar/distributed-rate-limiter/internal/profile"
+	"github.com/souravkumar/distributed-rate-limiter/internal/ratelimit"
 )
 
 func main() {
@@ -50,11 +51,17 @@ func main() {
 	profileService := profile.NewService(profileRepo, log.Logger)
 	profileHandler := profile.NewHandler(profileService, log.Logger)
 
+	// Initialize rate limit feature
+	limiter := ratelimit.NewTokenBucket(redisClient)
+	rateLimitService := ratelimit.NewService(limiter, profileRepo, log.Logger)
+	rateLimitHandler := ratelimit.NewHandler(rateLimitService, log.Logger)
+
 	// Setup router
 	router := server.NewRouter(&server.RouterConfig{
-		AuthHandler:    authHandler,
-		AuthMiddleware: server.AuthMiddleware(authRepo),
-		ProfileHandler: profileHandler,
+		AuthHandler:      authHandler,
+		AuthMiddleware:   server.AuthMiddleware(authRepo),
+		ProfileHandler:   profileHandler,
+		RateLimitHandler: rateLimitHandler,
 	})
 
 	// Create and start server

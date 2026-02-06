@@ -6,13 +6,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/souravkumar/distributed-rate-limiter/internal/auth"
 	"github.com/souravkumar/distributed-rate-limiter/internal/profile"
+	"github.com/souravkumar/distributed-rate-limiter/internal/ratelimit"
 )
 
 // RouterConfig holds all the handlers and middleware needed for routing
 type RouterConfig struct {
-	AuthHandler    *auth.Handler
-	AuthMiddleware gin.HandlerFunc
-	ProfileHandler *profile.Handler
+	AuthHandler      *auth.Handler
+	AuthMiddleware   gin.HandlerFunc
+	ProfileHandler   *profile.Handler
+	RateLimitHandler *ratelimit.Handler
 }
 
 // NewRouter creates and configures the Gin router
@@ -52,11 +54,11 @@ func NewRouter(cfg *RouterConfig) *gin.Engine {
 				profiles.DELETE("/:name", cfg.ProfileHandler.Delete)
 			}
 
-			// Rate limit routes will be added here
-			// ratelimit := protected.Group("/rate-limit")
-			// {
-			// 	ratelimit.POST("/check", cfg.RateLimitHandler.Check)
-			// }
+			// Rate limit routes
+			rl := protected.Group("/rate-limit")
+			{
+				rl.POST("/check", cfg.RateLimitHandler.Check)
+			}
 		}
 	}
 
