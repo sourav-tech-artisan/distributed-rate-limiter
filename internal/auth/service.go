@@ -11,13 +11,13 @@ import (
 
 // Service handles authentication business logic
 type Service struct {
-	repo   *Repository
+	repo   Repository
 	config *config.Config
 	logger zerolog.Logger
 }
 
 // NewService creates a new auth service
-func NewService(repo *Repository, cfg *config.Config, logger zerolog.Logger) *Service {
+func NewService(repo Repository, cfg *config.Config, logger zerolog.Logger) *Service {
 	return &Service{
 		repo:   repo,
 		config: cfg,

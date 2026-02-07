@@ -9,18 +9,26 @@ import (
 	"gorm.io/gorm"
 )
 
-// Repository handles database operations for tenants
-type Repository struct {
+// Repository defines data access operations for tenants
+type Repository interface {
+	Create(ctx context.Context, tenant *Tenant) error
+	GetByID(ctx context.Context, id string) (*Tenant, error)
+	GetByEmail(ctx context.Context, email string) (*Tenant, error)
+	GetByAPIKey(ctx context.Context, apiKey string) (*Tenant, error)
+	GetActiveByAPIKey(ctx context.Context, apiKey string) (*Tenant, error)
+}
+
+type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository creates a new tenant Repository
-func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db: db}
+// NewRepository creates a new PostgreSQL-backed tenant repository
+func NewRepository(db *gorm.DB) Repository {
+	return &repository{db: db}
 }
 
 // Create inserts a new tenant into the database
-func (r *Repository) Create(ctx context.Context, tenant *Tenant) error {
+func (r *repository) Create(ctx context.Context, tenant *Tenant) error {
 	result := r.db.WithContext(ctx).Create(tenant)
 	if result.Error != nil {
 		// Check for unique constraint violations
@@ -36,7 +44,7 @@ func (r *Repository) Create(ctx context.Context, tenant *Tenant) error {
 }
 
 // GetByID retrieves a tenant by their ID
-func (r *Repository) GetByID(ctx context.Context, id string) (*Tenant, error) {
+func (r *repository) GetByID(ctx context.Context, id string) (*Tenant, error) {
 	var tenant Tenant
 	result := r.db.WithContext(ctx).Where("id = ?", id).First(&tenant)
 	if result.Error != nil {
@@ -49,7 +57,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Tenant, error) {
 }
 
 // GetByEmail retrieves a tenant by their email address
-func (r *Repository) GetByEmail(ctx context.Context, email string) (*Tenant, error) {
+func (r *repository) GetByEmail(ctx context.Context, email string) (*Tenant, error) {
 	var tenant Tenant
 	result := r.db.WithContext(ctx).Where("email = ?", email).First(&tenant)
 	if result.Error != nil {
@@ -62,7 +70,7 @@ func (r *Repository) GetByEmail(ctx context.Context, email string) (*Tenant, err
 }
 
 // GetByAPIKey retrieves a tenant by their API key
-func (r *Repository) GetByAPIKey(ctx context.Context, apiKey string) (*Tenant, error) {
+func (r *repository) GetByAPIKey(ctx context.Context, apiKey string) (*Tenant, error) {
 	var tenant Tenant
 	result := r.db.WithContext(ctx).Where("api_key = ?", apiKey).First(&tenant)
 	if result.Error != nil {
@@ -76,7 +84,7 @@ func (r *Repository) GetByAPIKey(ctx context.Context, apiKey string) (*Tenant, e
 
 // GetActiveByAPIKey retrieves an active tenant by their API key
 // Returns ErrInactive if the tenant exists but is not active
-func (r *Repository) GetActiveByAPIKey(ctx context.Context, apiKey string) (*Tenant, error) {
+func (r *repository) GetActiveByAPIKey(ctx context.Context, apiKey string) (*Tenant, error) {
 	tenant, err := r.GetByAPIKey(ctx, apiKey)
 	if err != nil {
 		return nil, err

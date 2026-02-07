@@ -13,12 +13,12 @@ import (
 // Service handles rate limiting business logic
 type Service struct {
 	limiter     *TokenBucket
-	profileRepo *profile.Repository
+	profileRepo profile.Repository
 	logger      zerolog.Logger
 }
 
 // NewService creates a new rate limit service
-func NewService(limiter *TokenBucket, profileRepo *profile.Repository, logger zerolog.Logger) *Service {
+func NewService(limiter *TokenBucket, profileRepo profile.Repository, logger zerolog.Logger) *Service {
 	return &Service{
 		limiter:     limiter,
 		profileRepo: profileRepo,

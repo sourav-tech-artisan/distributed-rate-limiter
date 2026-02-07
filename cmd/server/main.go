@@ -43,23 +43,25 @@ func main() {
 
 	// Initialize auth feature
 	authRepo := auth.NewRepository(db)
+	cachedAuthRepo := auth.NewCachedRepository(authRepo, redisClient, log.Logger)
 	authService := auth.NewService(authRepo, cfg, log.Logger)
 	authHandler := auth.NewHandler(authService, log.Logger)
 
 	// Initialize profile feature
 	profileRepo := profile.NewRepository(db)
-	profileService := profile.NewService(profileRepo, log.Logger)
+	cachedProfileRepo := profile.NewCachedRepository(profileRepo, redisClient, log.Logger)
+	profileService := profile.NewService(cachedProfileRepo, log.Logger)
 	profileHandler := profile.NewHandler(profileService, log.Logger)
 
 	// Initialize rate limit feature
 	limiter := ratelimit.NewTokenBucket(redisClient)
-	rateLimitService := ratelimit.NewService(limiter, profileRepo, log.Logger)
+	rateLimitService := ratelimit.NewService(limiter, cachedProfileRepo, log.Logger)
 	rateLimitHandler := ratelimit.NewHandler(rateLimitService, log.Logger)
 
 	// Setup router
 	router := server.NewRouter(&server.RouterConfig{
 		AuthHandler:      authHandler,
-		AuthMiddleware:   server.AuthMiddleware(authRepo),
+		AuthMiddleware:   server.AuthMiddleware(cachedAuthRepo),
 		ProfileHandler:   profileHandler,
 		RateLimitHandler: rateLimitHandler,
 	})
