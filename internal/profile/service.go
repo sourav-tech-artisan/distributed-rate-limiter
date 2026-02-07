@@ -10,12 +10,12 @@ import (
 
 // Service handles profile business logic
 type Service struct {
-	repo   *Repository
+	repo   Repository
 	logger zerolog.Logger
 }
 
 // NewService creates a new profile service
-func NewService(repo *Repository, logger zerolog.Logger) *Service {
+func NewService(repo Repository, logger zerolog.Logger) *Service {
 	return &Service{
 		repo:   repo,
 		logger: logger,

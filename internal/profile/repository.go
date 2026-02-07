@@ -9,18 +9,27 @@ import (
 	"gorm.io/gorm"
 )
 
-// Repository handles database operations for profiles
-type Repository struct {
+// Repository defines data access operations for profiles
+type Repository interface {
+	Create(ctx context.Context, profile *Profile) error
+	FindByName(ctx context.Context, tenantID, name string) (*Profile, error)
+	FindAllByTenant(ctx context.Context, tenantID string) ([]Profile, error)
+	Update(ctx context.Context, profile *Profile) error
+	Delete(ctx context.Context, tenantID, name string) error
+	CountByTenant(ctx context.Context, tenantID string) (int64, error)
+}
+
+type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository creates a new profile Repository
-func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db: db}
+// NewRepository creates a new PostgreSQL-backed profile repository
+func NewRepository(db *gorm.DB) Repository {
+	return &repository{db: db}
 }
 
 // Create inserts a new profile into the database
-func (r *Repository) Create(ctx context.Context, profile *Profile) error {
+func (r *repository) Create(ctx context.Context, profile *Profile) error {
 	result := r.db.WithContext(ctx).Create(profile)
 	if result.Error != nil {
 		if isDuplicateKeyError(result.Error) {
@@ -32,7 +41,7 @@ func (r *Repository) Create(ctx context.Context, profile *Profile) error {
 }
 
 // FindByName retrieves a profile by tenant ID and name
-func (r *Repository) FindByName(ctx context.Context, tenantID, name string) (*Profile, error) {
+func (r *repository) FindByName(ctx context.Context, tenantID, name string) (*Profile, error) {
 	var profile Profile
 	result := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND name = ?", tenantID, name).
@@ -47,7 +56,7 @@ func (r *Repository) FindByName(ctx context.Context, tenantID, name string) (*Pr
 }
 
 // FindAllByTenant retrieves all profiles for a tenant
-func (r *Repository) FindAllByTenant(ctx context.Context, tenantID string) ([]Profile, error) {
+func (r *repository) FindAllByTenant(ctx context.Context, tenantID string) ([]Profile, error) {
 	var profiles []Profile
 	result := r.db.WithContext(ctx).
 		Where("tenant_id = ?", tenantID).
@@ -60,13 +69,13 @@ func (r *Repository) FindAllByTenant(ctx context.Context, tenantID string) ([]Pr
 }
 
 // Update modifies an existing profile
-func (r *Repository) Update(ctx context.Context, profile *Profile) error {
+func (r *repository) Update(ctx context.Context, profile *Profile) error {
 	result := r.db.WithContext(ctx).Save(profile)
 	return result.Error
 }
 
 // Delete removes a profile by tenant ID and name
-func (r *Repository) Delete(ctx context.Context, tenantID, name string) error {
+func (r *repository) Delete(ctx context.Context, tenantID, name string) error {
 	result := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND name = ?", tenantID, name).
 		Delete(&Profile{})
@@ -80,7 +89,7 @@ func (r *Repository) Delete(ctx context.Context, tenantID, name string) error {
 }
 
 // CountByTenant returns the number of profiles for a tenant
-func (r *Repository) CountByTenant(ctx context.Context, tenantID string) (int64, error) {
+func (r *repository) CountByTenant(ctx context.Context, tenantID string) (int64, error) {
 	var count int64
 	result := r.db.WithContext(ctx).
 		Model(&Profile{}).

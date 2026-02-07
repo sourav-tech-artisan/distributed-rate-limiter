@@ -21,7 +21,7 @@ const (
 )
 
 // AuthMiddleware creates a middleware that validates API keys
-func AuthMiddleware(authRepo *auth.Repository) gin.HandlerFunc {
+func AuthMiddleware(authRepo auth.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKey := c.GetHeader(APIKeyHeader)
 		if apiKey == "" {
