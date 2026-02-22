@@ -38,12 +38,19 @@ func (h *Handler) Check(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.service.Check(c.Request.Context(), tenant.ID, req)
+	resp, err := h.service.Check(c.Request.Context(), tenant.ID, tenant.MaxRequestsPerDay, req)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("rate limit check failed")
 
 		if errors.Is(err, common.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+
+		if errors.Is(err, common.ErrQuotaExceeded) {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error": "Daily request quota exceeded",
+			})
 			return
 		}
 
