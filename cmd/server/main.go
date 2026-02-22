@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/souravkumar/distributed-rate-limiter/internal/auth"
+	"github.com/souravkumar/distributed-rate-limiter/internal/platform/circuitbreaker"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/config"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/logger"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/postgres"
@@ -53,9 +54,13 @@ func main() {
 	profileService := profile.NewService(cachedProfileRepo, log.Logger)
 	profileHandler := profile.NewHandler(profileService, log.Logger)
 
+	// Initialize circuit breaker for Redis operations
+	redisCB := circuitbreaker.New("redis", &cfg.CircuitBreaker, log.Logger)
+
 	// Initialize rate limit feature
-	limiter := ratelimit.NewTokenBucket(redisClient)
-	rateLimitService := ratelimit.NewService(limiter, cachedProfileRepo, log.Logger)
+	limiter := ratelimit.NewTokenBucket(redisClient, redisCB)
+	quotaTracker := ratelimit.NewQuotaTracker(redisClient, redisCB, log.Logger)
+	rateLimitService := ratelimit.NewService(limiter, quotaTracker, cachedProfileRepo, log.Logger)
 	rateLimitHandler := ratelimit.NewHandler(rateLimitService, log.Logger)
 
 	// Setup router

@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -13,25 +14,41 @@ import (
 // Service handles rate limiting business logic
 type Service struct {
 	limiter     *TokenBucket
+	quota       *QuotaTracker
 	profileRepo profile.Repository
 	logger      zerolog.Logger
 }
 
 // NewService creates a new rate limit service
-func NewService(limiter *TokenBucket, profileRepo profile.Repository, logger zerolog.Logger) *Service {
+func NewService(limiter *TokenBucket, quota *QuotaTracker, profileRepo profile.Repository, logger zerolog.Logger) *Service {
 	return &Service{
 		limiter:     limiter,
+		quota:       quota,
 		profileRepo: profileRepo,
 		logger:      logger,
 	}
 }
 
-// Check performs a rate limit check for a given key and profile
-func (s *Service) Check(ctx context.Context, tenantID string, req CheckRequest) (*CheckResponse, error) {
+// Check performs a rate limit check for a given key and profile.
+// It first checks the tenant's daily quota, then runs the token bucket algorithm.
+// On Redis/circuit breaker failures, it fails open (allows the request) to avoid
+// blocking all traffic when the infrastructure is degraded.
+func (s *Service) Check(ctx context.Context, tenantID string, maxRequestsPerDay int, req CheckRequest) (*CheckResponse, error) {
+	// Check daily quota first
+	if err := s.quota.Check(ctx, tenantID, maxRequestsPerDay); err != nil {
+		if errors.Is(err, common.ErrQuotaExceeded) {
+			return nil, err
+		}
+		// Quota check failed (Redis/circuit breaker issue) — fail open
+		s.logger.Warn().Err(err).
+			Str("tenant_id", tenantID).
+			Msg("quota check failed, proceeding with rate limit check")
+	}
+
 	// Look up the profile
 	p, err := s.profileRepo.FindByName(ctx, tenantID, req.Profile)
 	if err != nil {
-		if err == common.ErrNotFound {
+		if errors.Is(err, common.ErrNotFound) {
 			return nil, fmt.Errorf("%w: profile '%s'", common.ErrNotFound, req.Profile)
 		}
 		s.logger.Error().Err(err).
@@ -60,12 +77,18 @@ func (s *Service) Check(ctx context.Context, tenantID string, req CheckRequest) 
 		Window:   window,
 	})
 	if err != nil {
-		s.logger.Error().Err(err).
+		// Rate limit check failed (Redis/circuit breaker issue) — fail open
+		s.logger.Warn().Err(err).
 			Str("tenant_id", tenantID).
 			Str("profile", req.Profile).
 			Str("key", req.Key).
-			Msg("rate limit check failed")
-		return nil, fmt.Errorf("rate limit check failed: %w", err)
+			Msg("rate limit check failed, allowing request (fail-open)")
+		return &CheckResponse{
+			Allowed:   true,
+			Limit:     p.Limit,
+			Remaining: p.Limit,
+			Reset:     time.Now().Add(window).Unix(),
+		}, nil
 	}
 
 	return resp, nil

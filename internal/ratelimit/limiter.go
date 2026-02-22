@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker"
 	"github.com/souravkumar/distributed-rate-limiter/internal/common"
 )
 
@@ -69,11 +70,12 @@ return {allowed, math.floor(tokens), reset}
 // TokenBucket implements the token bucket rate limiting algorithm using Redis
 type TokenBucket struct {
 	client *redis.Client
+	cb     *gobreaker.CircuitBreaker
 }
 
 // NewTokenBucket creates a new TokenBucket limiter
-func NewTokenBucket(client *redis.Client) *TokenBucket {
-	return &TokenBucket{client: client}
+func NewTokenBucket(client *redis.Client, cb *gobreaker.CircuitBreaker) *TokenBucket {
+	return &TokenBucket{client: client, cb: cb}
 }
 
 // BucketConfig holds the configuration for a rate limit check
@@ -106,16 +108,20 @@ func (tb *TokenBucket) Allow(ctx context.Context, cfg BucketConfig) (*CheckRespo
 
 	nowMs := time.Now().UnixMilli()
 
-	// Execute Lua script atomically
-	result, err := tokenBucketScript.Run(ctx, tb.client, []string{key},
-		cfg.Capacity,
-		refillRate,
-		nowMs,
-		ttlSeconds,
-	).Int64Slice()
+	// Execute Lua script atomically, protected by circuit breaker
+	raw, err := tb.cb.Execute(func() (interface{}, error) {
+		return tokenBucketScript.Run(ctx, tb.client, []string{key},
+			cfg.Capacity,
+			refillRate,
+			nowMs,
+			ttlSeconds,
+		).Int64Slice()
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute rate limit check: %w", err)
 	}
+
+	result := raw.([]int64)
 
 	allowed := result[0] == 1
 	remaining := int(result[1])
