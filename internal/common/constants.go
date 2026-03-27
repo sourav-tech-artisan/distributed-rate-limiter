@@ -33,15 +33,15 @@ type Algorithm string
 
 const (
 	AlgorithmTokenBucket   Algorithm = "token_bucket"
-	AlgorithmSlidingWindow Algorithm = "sliding_window" // future
-	AlgorithmFixedWindow   Algorithm = "fixed_window"   // future
-	AlgorithmLeakyBucket   Algorithm = "leaky_bucket"   // future
+	AlgorithmSlidingWindow Algorithm = "sliding_window"
+	AlgorithmFixedWindow   Algorithm = "fixed_window"
+	AlgorithmLeakyBucket   Algorithm = "leaky_bucket"
 )
 
 // IsValid checks if the algorithm is a known/supported type
 func (a Algorithm) IsValid() bool {
 	switch a {
-	case AlgorithmTokenBucket:
+	case AlgorithmTokenBucket, AlgorithmFixedWindow, AlgorithmSlidingWindow, AlgorithmLeakyBucket:
 		return true
 	default:
 		return false
