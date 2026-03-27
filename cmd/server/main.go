@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/souravkumar/distributed-rate-limiter/internal/auth"
+	"github.com/souravkumar/distributed-rate-limiter/internal/common"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/circuitbreaker"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/config"
 	"github.com/souravkumar/distributed-rate-limiter/internal/platform/logger"
@@ -58,9 +59,14 @@ func main() {
 	redisCB := circuitbreaker.New("redis", &cfg.CircuitBreaker, log.Logger)
 
 	// Initialize rate limit feature
-	limiter := ratelimit.NewTokenBucket(redisClient, redisCB)
+	registry := ratelimit.NewRegistry(map[common.Algorithm]ratelimit.Limiter{
+		common.AlgorithmTokenBucket:   ratelimit.NewTokenBucket(redisClient, redisCB),
+		common.AlgorithmFixedWindow:   ratelimit.NewFixedWindow(redisClient, redisCB),
+		common.AlgorithmSlidingWindow: ratelimit.NewSlidingWindow(redisClient, redisCB),
+		common.AlgorithmLeakyBucket:   ratelimit.NewLeakyBucket(redisClient, redisCB),
+	})
 	quotaTracker := ratelimit.NewQuotaTracker(redisClient, redisCB, log.Logger)
-	rateLimitService := ratelimit.NewService(limiter, quotaTracker, cachedProfileRepo, log.Logger)
+	rateLimitService := ratelimit.NewService(registry, quotaTracker, cachedProfileRepo, log.Logger)
 	rateLimitHandler := ratelimit.NewHandler(rateLimitService, log.Logger)
 
 	// Setup router

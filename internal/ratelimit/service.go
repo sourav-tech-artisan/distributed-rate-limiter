@@ -13,16 +13,16 @@ import (
 
 // Service handles rate limiting business logic
 type Service struct {
-	limiter     *TokenBucket
+	registry    *Registry
 	quota       *QuotaTracker
 	profileRepo profile.Repository
 	logger      zerolog.Logger
 }
 
 // NewService creates a new rate limit service
-func NewService(limiter *TokenBucket, quota *QuotaTracker, profileRepo profile.Repository, logger zerolog.Logger) *Service {
+func NewService(registry *Registry, quota *QuotaTracker, profileRepo profile.Repository, logger zerolog.Logger) *Service {
 	return &Service{
-		limiter:     limiter,
+		registry:    registry,
 		quota:       quota,
 		profileRepo: profileRepo,
 		logger:      logger,
@@ -30,7 +30,8 @@ func NewService(limiter *TokenBucket, quota *QuotaTracker, profileRepo profile.R
 }
 
 // Check performs a rate limit check for a given key and profile.
-// It first checks the tenant's daily quota, then runs the token bucket algorithm.
+// It first checks the tenant's daily quota, then dispatches to the appropriate
+// algorithm based on the profile configuration.
 // On Redis/circuit breaker failures, it fails open (allows the request) to avoid
 // blocking all traffic when the infrastructure is degraded.
 func (s *Service) Check(ctx context.Context, tenantID string, maxRequestsPerDay int, req CheckRequest) (*CheckResponse, error) {
@@ -39,7 +40,6 @@ func (s *Service) Check(ctx context.Context, tenantID string, maxRequestsPerDay 
 		if errors.Is(err, common.ErrQuotaExceeded) {
 			return nil, err
 		}
-		// Quota check failed (Redis/circuit breaker issue) — fail open
 		s.logger.Warn().Err(err).
 			Str("tenant_id", tenantID).
 			Msg("quota check failed, proceeding with rate limit check")
@@ -67,8 +67,14 @@ func (s *Service) Check(ctx context.Context, tenantID string, maxRequestsPerDay 
 		return nil, fmt.Errorf("invalid window duration '%s': %w", p.Window, err)
 	}
 
-	// Run the token bucket algorithm
-	resp, err := s.limiter.Allow(ctx, BucketConfig{
+	// Resolve the limiter for this profile's algorithm
+	limiter, err := s.registry.Get(common.Algorithm(p.Algorithm))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", common.ErrInvalidInput, err)
+	}
+
+	// Run the rate limit algorithm
+	resp, err := limiter.Allow(ctx, LimitConfig{
 		TenantID: tenantID,
 		Profile:  req.Profile,
 		UserKey:  req.Key,
